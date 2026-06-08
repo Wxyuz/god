@@ -1,148 +1,261 @@
+# ============================================================
+# Wxyuz CISCO Loader Script
+# Usage:
+# irm "https://raw.githubusercontent.com/Wxyuz/CISCO/main/P.ps?t=101" | iex
+# ============================================================
+
 $ErrorActionPreference = "Stop"
-$ProgressPreference = "SilentlyContinue"
 
-try {
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-}
-catch {
-}
+# -----------------------------
+# CONFIG
+# -----------------------------
 
-try {
-    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-    $OutputEncoding = [System.Text.Encoding]::UTF8
-}
-catch {
-}
+$AppName = "WxyuzCISCO"
 
-$RepoOwner = "Wxyuz"
-$RepoName = "god"
-$TagName = "v1.0.0"
-$ExeName = "loader.exe"
+# แก้ไขลิงก์เป็น GitHub Release ของ Wxyuz/god
+# หากมีการระบุเวอร์ชัน (Tag) สามารถเปลี่ยน /latest/ เป็น /download/v1.0.0/ (หรือชื่อ tag ที่ตั้งไว้) ได้
+$LoaderUrl = "https://github.com/Wxyuz/god/releases/latest/download/loader.exe"
 
-$ReleasePage = "https://github.com/$RepoOwner/$RepoName/releases/tag/$TagName"
-$DownloadUrl = "https://github.com/$RepoOwner/$RepoName/releases/download/$TagName/$ExeName"
+# SHA256 ของไฟล์ loader.exe ที่คุณอัปโหลดมา (ถ้าไฟล์ใน Release เป็นไฟล์ใหม่ อย่าลืมอัปเดตค่านี้)
+$ExpectedSha256 = "b60811ffc2196ba3de82f2dcd92245ceab1335f0abf011ff3a2816ec6596ad6c"
 
-$OutDir = Join-Path $env:USERPROFILE "Downloads"
-$OutFile = Join-Path $OutDir $ExeName
+# โฟลเดอร์ที่จะเก็บไฟล์หลังโหลด
+$InstallDir = Join-Path $env:LOCALAPPDATA $AppName
+$ExePath = Join-Path $InstallDir "loader.exe"
+
+# -----------------------------
+# FUNCTIONS
+# -----------------------------
 
 function Write-Info {
     param(
-        [string]$Text
+        [Parameter(Mandatory = $true)]
+        [string]$Message
     )
-    Write-Host "[+] $Text" -ForegroundColor Cyan
+
+    Write-Host "[INFO] $Message" -ForegroundColor Cyan
 }
 
-function Write-Good {
-    param(
-        [string]$Text
-    )
-    Write-Host "[OK] $Text" -ForegroundColor Green
-}
-
-function Write-Bad {
-    param(
-        [string]$Text
-    )
-    Write-Host "[ERROR] $Text" -ForegroundColor Red
-}
-
-function Test-WindowsExe {
+function Write-Ok {
     param(
         [Parameter(Mandatory = $true)]
-        [string]$Path
+        [string]$Message
     )
 
-    if (!(Test-Path -LiteralPath $Path)) {
-        return $false
-    }
+    Write-Host "[OK] $Message" -ForegroundColor Green
+}
 
+function Write-Warn {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message
+    )
+
+    Write-Host "[WARN] $Message" -ForegroundColor Yellow
+}
+
+function Write-Fail {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message
+    )
+
+    Write-Host "[ERROR] $Message" -ForegroundColor Red
+}
+
+function Test-Internet {
     try {
-        $stream = [System.IO.File]::Open(
-            $Path,
-            [System.IO.FileMode]::Open,
-            [System.IO.FileAccess]::Read,
-            [System.IO.FileShare]::ReadWrite
-        )
+        $request = [System.Net.WebRequest]::Create("https://github.com")
+        $request.Method = "HEAD"
+        $request.Timeout = 8000
 
-        try {
-            if ($stream.Length -lt 2) {
-                return $false
-            }
+        $response = $request.GetResponse()
+        $response.Close()
 
-            $buffer = New-Object byte[] 2
-            [void]$stream.Read($buffer, 0, 2)
-
-            return ($buffer[0] -eq 0x4D -and $buffer[1] -eq 0x5A)
-        }
-        finally {
-            $stream.Close()
-        }
+        return $true
     }
     catch {
         return $false
     }
 }
 
-Clear-Host
+function Get-FileSha256 {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath
+    )
 
-Write-Host "====================================================" -ForegroundColor Yellow
-Write-Host "                  LOADER DOWNLOADER                 " -ForegroundColor Yellow
-Write-Host "====================================================" -ForegroundColor Yellow
-Write-Host ""
+    if (-not (Test-Path $FilePath)) {
+        return $null
+    }
 
-Write-Info "Repository : https://github.com/$RepoOwner/$RepoName"
-Write-Info "Release    : $ReleasePage"
-Write-Info "File       : $ExeName"
-Write-Info "URL        : $DownloadUrl"
-Write-Host ""
-
-if (!(Test-Path -LiteralPath $OutDir)) {
-    Write-Info "Creating Downloads folder..."
-    New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
+    return (Get-FileHash -Path $FilePath -Algorithm SHA256).Hash.ToLower()
 }
 
-if (Test-Path -LiteralPath $OutFile) {
-    Write-Info "Old loader.exe found. Removing old file..."
-    Remove-Item -LiteralPath $OutFile -Force
+function Download-File {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Url,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Destination
+    )
+
+    $tempFile = "$Destination.download"
+
+    if (Test-Path $tempFile) {
+        Remove-Item $tempFile -Force
+    }
+
+    Write-Info "กำลังดาวน์โหลดไฟล์..."
+    Write-Info "URL: $Url"
+
+    try {
+        Invoke-WebRequest `
+            -Uri $Url `
+            -OutFile $tempFile `
+            -UseBasicParsing
+    }
+    catch {
+        if (Test-Path $tempFile) {
+            Remove-Item $tempFile -Force
+        }
+
+        throw "ดาวน์โหลดไม่สำเร็จ: $($_.Exception.Message)"
+    }
+
+    if (-not (Test-Path $tempFile)) {
+        throw "ดาวน์โหลดไม่สำเร็จ ไม่พบไฟล์ที่โหลดมา"
+    }
+
+    Move-Item -Path $tempFile -Destination $Destination -Force
 }
 
-Write-Info "Downloading loader.exe..."
-Invoke-WebRequest -Uri $DownloadUrl -OutFile $OutFile -UseBasicParsing
+function Verify-FileHash {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath,
 
-Write-Host ""
+        [Parameter(Mandatory = $true)]
+        [string]$ExpectedHash
+    )
 
-if (!(Test-Path -LiteralPath $OutFile)) {
-    Write-Bad "Download failed. File not found."
+    if ([string]::IsNullOrWhiteSpace($ExpectedHash)) {
+        Write-Warn "ไม่ได้ตั้งค่า ExpectedSha256 ข้ามการตรวจสอบ SHA256"
+        return $true
+    }
+
+    $actualHash = Get-FileSha256 -FilePath $FilePath
+
+    if ($null -eq $actualHash) {
+        Write-Fail "ไม่พบไฟล์สำหรับตรวจสอบ SHA256"
+        return $false
+    }
+
+    Write-Info "SHA256 ที่ได้: $actualHash"
+
+    if ($actualHash -ne $ExpectedHash.ToLower()) {
+        Write-Fail "SHA256 ไม่ตรง ไฟล์อาจไม่ใช่ไฟล์เดียวกับที่ตั้งไว้"
+        Write-Fail "Expected: $ExpectedHash"
+        Write-Fail "Actual:   $actualHash"
+        return $false
+    }
+
+    Write-Ok "ตรวจสอบ SHA256 ผ่าน"
+    return $true
+}
+
+function Start-Loader {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath
+    )
+
+    if (-not (Test-Path $FilePath)) {
+        throw "ไม่พบ loader.exe"
+    }
+
+    Write-Info "กำลังเปิดโปรแกรม loader.exe..."
+
+    Start-Process `
+        -FilePath $FilePath `
+        -WorkingDirectory (Split-Path $FilePath -Parent)
+
+    Write-Ok "เปิดโปรแกรมเรียบร้อย"
+}
+
+# -----------------------------
+# MAIN
+# -----------------------------
+
+try {
     Write-Host ""
-    pause
-    exit
-}
-
-Write-Good "Download complete"
-Write-Info "Saved to: $OutFile"
-Write-Host ""
-
-Write-Info "Checking file type..."
-if (!(Test-WindowsExe -Path $OutFile)) {
-    Write-Bad "Downloaded file is not a valid Windows EXE."
+    Write-Host "==============================================" -ForegroundColor DarkCyan
+    Write-Host "          Wxyuz CISCO Loader Installer         " -ForegroundColor Cyan
+    Write-Host "==============================================" -ForegroundColor DarkCyan
     Write-Host ""
-    pause
-    exit
+
+    Write-Info "เตรียมระบบ..."
+
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = `
+            [Net.SecurityProtocolType]::Tls12 `
+            -bor [Net.SecurityProtocolType]::Tls13
+    }
+    catch {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    }
+
+    if (-not (Test-Internet)) {
+        throw "ไม่สามารถเชื่อมต่อ GitHub ได้ กรุณาตรวจสอบอินเทอร์เน็ต"
+    }
+
+    if (-not (Test-Path $InstallDir)) {
+        Write-Info "สร้างโฟลเดอร์: $InstallDir"
+        New-Item -Path $InstallDir -ItemType Directory -Force | Out-Null
+    }
+
+    $needDownload = $true
+
+    if (Test-Path $ExePath) {
+        Write-Info "พบ loader.exe เดิมแล้ว กำลังตรวจสอบไฟล์..."
+
+        $currentHash = Get-FileSha256 -FilePath $ExePath
+
+        if ($currentHash -eq $ExpectedSha256.ToLower()) {
+            Write-Ok "ไฟล์เดิมถูกต้อง ไม่ต้องดาวน์โหลดใหม่"
+            $needDownload = $false
+        }
+        else {
+            Write-Warn "ไฟล์เดิมไม่ตรงกับ SHA256 จะดาวน์โหลดใหม่"
+            Remove-Item $ExePath -Force
+        }
+    }
+
+    if ($needDownload) {
+        Download-File -Url $LoaderUrl -Destination $ExePath
+    }
+
+    $verified = Verify-FileHash -FilePath $ExePath -ExpectedHash $ExpectedSha256
+
+    if (-not $verified) {
+        if (Test-Path $ExePath) {
+            Remove-Item $ExePath -Force
+        }
+
+        throw "ยกเลิกการเปิดโปรแกรม เพราะตรวจสอบไฟล์ไม่ผ่าน"
+    }
+
+    Start-Loader -FilePath $ExePath
+
+    Write-Host ""
+    Write-Ok "เสร็จสมบูรณ์"
+    Write-Host ""
 }
-
-Write-Good "Valid Windows EXE file"
-Write-Host ""
-
-Write-Info "SHA256:"
-Get-FileHash -LiteralPath $OutFile -Algorithm SHA256
-Write-Host ""
-
-Write-Info "Opening file location..."
-explorer.exe /select,"$OutFile"
-
-Write-Host ""
-Write-Good "Done"
-Write-Host "Check the file, then open loader.exe manually."
-Write-Host ""
-
-pause
+catch {
+    Write-Host ""
+    Write-Fail $_
+    Write-Host ""
+    Write-Host "กด Enter เพื่อปิดหน้าต่างนี้..." -ForegroundColor Gray
+    Read-Host | Out-Null
+}
