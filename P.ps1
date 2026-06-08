@@ -18,32 +18,34 @@ if (!(Test-Path $OutDir)) {
     New-Item -ItemType Directory -Path $OutDir | Out-Null
 }
 
-Write-Host "[+] กำลังโหลด loader.exe..."
+Write-Host "[+] Downloading loader.exe..."
 Write-Host "[+] URL: $Url"
 Write-Host ""
 
 Invoke-WebRequest -Uri $Url -OutFile $OutFile
 
 if (!(Test-Path $OutFile)) {
-    Write-Host "[ERROR] โหลดไฟล์ไม่สำเร็จ"
+    Write-Host ""
+    Write-Host "[ERROR] Download failed."
+    Write-Host ""
     pause
     exit
 }
 
 Write-Host ""
-Write-Host "[+] โหลดเสร็จแล้ว"
-Write-Host "[+] บันทึกไว้ที่: $OutFile"
+Write-Host "[+] Download complete"
+Write-Host "[+] Saved to: $OutFile"
 Write-Host ""
 
 Write-Host "[+] SHA256:"
 Get-FileHash $OutFile -Algorithm SHA256
 
 Write-Host ""
-Write-Host "[+] เปิดตำแหน่งไฟล์..."
+Write-Host "[+] Opening file location..."
 explorer.exe /select,"$OutFile"
 
 Write-Host ""
-Write-Host "เสร็จแล้ว ให้ตรวจสอบไฟล์ก่อน แล้วค่อยเปิด loader.exe เอง"
+Write-Host "Done. Please check the file, then open loader.exe manually."
 Write-Host ""
 
 pause
