@@ -27,7 +27,6 @@ Invoke-WebRequest -Uri $Url -OutFile $OutFile
 if (!(Test-Path $OutFile)) {
     Write-Host ""
     Write-Host "[ERROR] Download failed."
-    Write-Host ""
     pause
     exit
 }
@@ -45,7 +44,7 @@ Write-Host "[+] Opening file location..."
 explorer.exe /select,"$OutFile"
 
 Write-Host ""
-Write-Host "Done. Please check the file, then open loader.exe manually."
+Write-Host "Done. Check the file, then open loader.exe manually."
 Write-Host ""
 
 pause
