@@ -1,61 +1,44 @@
 # ============================================================
-# Wxyuz Loader Script
+# Wxyuz Auto-Run GUI Script
 # ============================================================
-
 $ErrorActionPreference = "Stop"
 
-# -----------------------------
-# CONFIG
-# -----------------------------
-$AppName = "WxyuzCISCO"
-# ลิงก์ดาวน์โหลดอ้างอิงจากรูปภาพของคุณ
-$LoaderUrl = "https://github.com/Wxyuz/god/releases/download/v1.0.0/loader.exe"
+# ลิงก์ดาวน์โหลดไฟล์ .exe จาก GitHub (ต้องเป็นไฟล์โปรแกรม GUI ตัวจริง)
+$ExeUrl = "https://github.com/Wxyuz/god/releases/download/v1.0.0/loader.exe"
 
-# ใช้โฟลเดอร์ Temp (ไฟล์ชั่วคราว) เพื่อไม่ให้รกเครื่อง
-$InstallDir = Join-Path $env:TEMP $AppName
-$ExePath = Join-Path $InstallDir "loader.exe"
+# บันทึกไว้ในโฟลเดอร์ Temp (ไฟล์ชั่วคราว) จะได้ไม่ไปรกในเครื่อง
+$ExePath = Join-Path $env:TEMP "WxyuzLoaderGUI.exe"
 
-# -----------------------------
-# MAIN
-# -----------------------------
 Clear-Host
 Write-Host "==============================================" -ForegroundColor DarkCyan
-Write-Host "          Wxyuz Loader Starting...            " -ForegroundColor Cyan
+Write-Host "          Starting Wxyuz Program...           " -ForegroundColor Cyan
 Write-Host "==============================================" -ForegroundColor DarkCyan
 Write-Host ""
+Write-Host "[*] กำลังดาวน์โหลดและเตรียมเปิดโปรแกรม กรุณารอสักครู่..." -ForegroundColor Yellow
 
 try {
-    # 1. เตรียมระบบเครือข่าย
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
+    # บังคับใช้ TLS 1.2 เพื่อให้โหลดจาก GitHub ได้
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-    # สร้างโฟลเดอร์ Temp หากยังไม่มี
-    if (-not (Test-Path $InstallDir)) {
-        New-Item -Path $InstallDir -ItemType Directory -Force | Out-Null
-    }
-
-    # ลบไฟล์เก่าทิ้ง (ถ้ามี) เพื่อให้โหลดตัวใหม่เสมอ
+    # ลบไฟล์เก่าใน Temp ทิ้งก่อน (ถ้ามี) เพื่อบังคับโหลดไฟล์ใหม่เสมอ
     if (Test-Path $ExePath) {
         Remove-Item $ExePath -Force
     }
 
-    # 2. เริ่มการดาวน์โหลด (จะมีหลอดความคืบหน้าแสดงขึ้นมา)
-    Write-Host "[INFO] กำลังดาวน์โหลดข้อมูลเพื่อเปิดโปรแกรม กรุณารอสักครู่..." -ForegroundColor Cyan
-    Invoke-WebRequest -Uri $LoaderUrl -OutFile $ExePath -UseBasicParsing
+    # ดาวน์โหลดไฟล์
+    Invoke-WebRequest -Uri $ExeUrl -OutFile $ExePath -UseBasicParsing
 
-    # 3. เปิดโปรแกรม GUI ทันทีที่โหลดเสร็จ
     if (Test-Path $ExePath) {
-        Write-Host "[OK] โหลดเสร็จสิ้น กำลังเปิด GUI..." -ForegroundColor Green
-        Start-Process -FilePath $ExePath -WorkingDirectory $InstallDir
+        # สั่งเปิดโปรแกรมทันที
+        Start-Process -FilePath $ExePath
         
-        # หน่วงเวลาเล็กน้อยให้โปรแกรมเปิดติด ก่อนปิดสคริปต์
-        Start-Sleep -Seconds 2 
+        # ปิดหน้าต่าง PowerShell เพื่อให้เหลือแต่หน้า GUI ที่คุณต้องการ
+        Stop-Process -Id $PID
     } else {
-        throw "ไม่พบไฟล์หลังจากการดาวน์โหลด"
+        Write-Host "[X] เกิดข้อผิดพลาด: ไม่พบไฟล์หลังจากการดาวน์โหลด" -ForegroundColor Red
+        Start-Sleep -Seconds 5
     }
-
 } catch {
-    Write-Host ""
-    Write-Host "[ERROR] เกิดข้อผิดพลาด: $_" -ForegroundColor Red
-    Write-Host ""
+    Write-Host "[X] เกิดข้อผิดพลาดในการโหลดโปรแกรม: $_" -ForegroundColor Red
     Start-Sleep -Seconds 5
 }
